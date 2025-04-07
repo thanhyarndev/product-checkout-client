@@ -1,22 +1,68 @@
+// --- src/app/page.tsx ---
 'use client';
 
 import { useState } from 'react';
 import axios from 'axios';
+import { toast, ToastContainer } from 'react-toastify';
+import 'react-toastify/dist/ReactToastify.css';
+
+interface Product {
+  sku: string;
+  name: string;
+  price: number;
+  description: string;
+  isCheckout: boolean;
+  quantity: number;
+}
 
 export default function HomePage() {
   const [epc, setEpc] = useState('');
-  const [productInfo, setProductInfo] = useState<any>(null);
-  const [error, setError] = useState('');
+  const [productList, setProductList] = useState<Product[]>([]);
+  const [seenEPCs, setSeenEPCs] = useState<string[]>([]);
 
   const handleSearch = async () => {
     if (!epc) return;
+    if (seenEPCs.includes(epc)) {
+      toast.info('EPC đã được quét');
+      setEpc('');
+      return;
+    }
+
     try {
       const res = await axios.get(`http://localhost:8080/api/epc/${epc}/detail`);
-      setProductInfo(res.data);
-      setError('');
+      const data = res.data;
+
+      if (!data || !data.product) {
+        toast.error('Không tìm thấy sản phẩm');
+        return;
+      }
+
+      setSeenEPCs((prev) => [...prev, epc]);
+
+      setProductList((prev) => {
+        const exists = prev.find((p) => p.sku === data.sku);
+        if (exists) {
+          return prev.map((p) =>
+            p.sku === data.sku ? { ...p, quantity: p.quantity + 1 } : p
+          );
+        } else {
+          return [
+            ...prev,
+            {
+              sku: data.sku,
+              name: data.product.name,
+              price: data.product.price,
+              description: data.product.description,
+              isCheckout: data.isCheckout,
+              quantity: 1,
+            },
+          ];
+        }
+      });
     } catch (err: any) {
-      setProductInfo(null);
-      setError(err?.response?.data?.message || 'Không tìm thấy sản phẩm');
+      toast.error(err?.response?.data?.message || 'Không tìm thấy sản phẩm');
+    } finally {
+      setEpc('');
     }
   };
 
@@ -26,14 +72,22 @@ export default function HomePage() {
     }
   };
 
+  const handleClear = () => {
+    setProductList([]);
+    setSeenEPCs([]);
+  };
+
+  const totalQuantity = productList.reduce((sum, item) => sum + item.quantity, 0);
+  const totalPrice = productList.reduce((sum, item) => sum + item.quantity * item.price, 0);
+
   return (
-    <main className="flex min-h-screen items-center justify-center bg-white px-4">
-      <div className="w-full max-w-2xl text-center">
-        <h1 className="text-3xl sm:text-4xl font-semibold mb-8 text-gray-800">
+    <main className="flex min-h-screen items-center justify-center bg-gray-50 px-4 py-12">
+      <div className="w-full max-w-3xl text-center">
+        <h1 className="text-4xl font-bold mb-6 text-gray-800">
           Bạn muốn tìm gì hôm nay?
         </h1>
 
-        <div className="flex items-center bg-white shadow-md rounded-full border border-gray-300 overflow-hidden">
+        <div className="flex items-center bg-white shadow-md rounded-full border border-gray-300 overflow-hidden mb-6">
           <input
             type="text"
             placeholder="Nhập mã EPC..."
@@ -50,21 +104,44 @@ export default function HomePage() {
           </button>
         </div>
 
-        {error && (
-          <p className="text-red-500 mt-4 text-sm">{error}</p>
-        )}
-
-        {productInfo && (
-          <div className="mt-8 p-6 border rounded-lg bg-gray-50 text-left">
-            <h2 className="text-xl font-semibold mb-2 text-gray-800">Thông tin sản phẩm</h2>
-            <p><strong>EPC:</strong> {productInfo.epc}</p>
-            <p><strong>SKU:</strong> {productInfo.sku}</p>
-            <p><strong>Tên:</strong> {productInfo.product.name}</p>
-            <p><strong>Giá:</strong> {productInfo.product.price}đ</p>
-            <p><strong>Mô tả:</strong> {productInfo.product.description}</p>
-            <p><strong>Trạng thái:</strong> {productInfo.isCheckout ? 'Đã thanh toán' : 'Chưa thanh toán'}</p>
+        {productList.length > 0 && (
+          <div className="flex justify-between items-center mb-4">
+            <div className="text-left">
+              <p className="text-gray-700 text-sm">
+                Tổng số lượng: <strong>{totalQuantity}</strong>
+              </p>
+              <p className="text-gray-700 text-sm">
+                Tổng tiền: <strong>{totalPrice.toLocaleString()}đ</strong>
+              </p>
+            </div>
+            <button
+              onClick={handleClear}
+              className="px-4 py-2 bg-red-500 text-white rounded hover:bg-red-600 transition"
+            >
+              Làm mới
+            </button>
           </div>
         )}
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+          {productList.map((item, idx) => (
+            <div key={idx} className="p-5 border rounded-xl bg-white shadow-sm text-left">
+              <h2 className="text-lg font-semibold text-gray-800">{item.name}</h2>
+              <p className="text-gray-700">SKU: {item.sku}</p>
+              <p className="text-gray-700">Giá: {item.price.toLocaleString()}đ</p>
+              <p className="text-gray-700">Số lượng: {item.quantity}</p>
+              <p className="text-gray-600 text-sm mt-1">{item.description}</p>
+              <p className="mt-2 text-sm">
+                Trạng thái:{' '}
+                <span className={item.isCheckout ? 'text-green-600' : 'text-yellow-600'}>
+                  {item.isCheckout ? 'Đã thanh toán' : 'Chưa thanh toán'}
+                </span>
+              </p>
+            </div>
+          ))}
+        </div>
+
+        <ToastContainer position="top-center" autoClose={3000} />
       </div>
     </main>
   );
